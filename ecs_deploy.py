@@ -6,12 +6,16 @@
     deployment script for AWS ECS
 """
 
-from __future__ import print_function
 import sys
 import time
 import argparse
 import boto3
 from botocore.exceptions import ClientError
+
+import logging
+logging.basicConfig()
+log = logging.getLogger(__name__)
+log.setLevel(logging.DEBUG)
 
 
 class CLI(object):
@@ -33,12 +37,12 @@ class CLI(object):
             # init boto3 ecs client
             self.client = boto3.client('ecs', **credentials)
         except ClientError as err:
-            print('Failed to create boto3 client.\n%s' % err)
+            log.error('Failed to create boto3 client.\n%s' % err)
             sys.exit(1)
 
         if not (self.args.get('task_definition') or
                 self.args.get('service_name')):
-            print('Either task-definition or service-name must be provided.')
+            log.error('Either task-definition or service-name must be provided.')
             sys.exit(1)
 
         # run script
@@ -175,43 +179,40 @@ class CLI(object):
 
         self.task_definition = self.client_fn(
             'describe_task_definition')['taskDefinition']
-        print('Current task definition: %s' %
-              self.task_definition['taskDefinitionArn'])
+        log.info('Current task definition: %s' %
+                 self.task_definition['taskDefinitionArn'])
 
         self.new_task_definition = self.client_fn(
             'register_task_definition')['taskDefinition']
-        print('New task definition: %s' %
-              self.new_task_definition['taskDefinitionArn'])
+        log.info('New task definition: %s' %
+                 self.new_task_definition['taskDefinitionArn'])
 
-        if self.task_definition:
-            if not self.client_fn('update_service'):
+        if not self.task_definition:
+            raise ValueError("No task definition")
+
+        if not self.client_fn('update_service'):
+            raise ValueError("No update service found")
+
+        # loop for desired timeout
+        timeout = self._int_or_none(self.args.get('timeout')) or 90
+        started_at = time.time()
+        while True:
+            self.running_tasks = self.client_fn('list_tasks')['taskArns']
+            if len(self.running_tasks) > 0:
+                described_tasks = self.client_fn('describe_tasks')['tasks']
+            else:
+                described_tasks = []
+            for task in described_tasks:
+                if task['taskDefinitionArn'] == \
+                        self.new_task_definition['taskDefinitionArn']:
+                    log.info('Service updated successfully, '
+                             'new task definition running.')
+                    return
+            if time.time() > started_at + timeout:
+                log.error('New task definition not running'
+                          ' within %d seconds' % timeout)
                 sys.exit(1)
-
-            # loop for desired timeout
-            timeout = self._int_or_none(self.args.get('timeout')) or 90
-            started_at = time.time()
-            while True:
-                self.running_tasks = self.client_fn('list_tasks')['taskArns']
-
-                if len(self.running_tasks) > 0:
-                    described_tasks = self.client_fn('describe_tasks')['tasks']
-                else:
-                    described_tasks = []
-
-                for task in described_tasks:
-                    if task['taskDefinitionArn'] == \
-                            self.new_task_definition['taskDefinitionArn']:
-                        print('Service updated successfully, '
-                              'new task definition running.')
-                        return
-                if time.time() > started_at + timeout:
-                    print('ERROR: New task definition not running'
-                          'within %d seconds' % timeout)
-                    sys.exit(1)
-                time.sleep(1)
-
-        else:
-            sys.exit(1)
+            time.sleep(1)
 
     def _int_or_none(self, value):
         if type(value) == str and value.isdigit():
@@ -225,7 +226,10 @@ class CLI(object):
         # use 'service_name' with describe_services() to get task definition
         service = self.client_fn('describe_services')
         arn = service['services'][0]['taskDefinition']
-        return arn.split('/')[1].split(':')[0]
+        log.debug(arn)
+        name = arn.split('/')[1].split(':')[0]
+        log.debug(name)
+        return name
 
     def _service_name(self):
         if self.args.get('service_name'):
@@ -235,7 +239,10 @@ class CLI(object):
         serviceArns = self.client_fn('list_services')['serviceArns']
         service = [s for s in serviceArns if self.args.get('task_definition')
                    in s][0]
-        return service.split('/')[1].split(':')[0]
+        log.debug(service)
+        name = service.split('/')[1].split(':')[0]
+        log.debug(name)
+        return name
 
     def _arg_kwargs(self, kwargs, arg_name, alt_name=None):
         # add specified arg to kwargs if it exists, return kwargs
@@ -273,9 +280,8 @@ class CLI(object):
                         container_found = True
 
                 if not container_found:
-                    print('Container %s not found in the task definition %s' %
-                          (ci_container_name,
-                           self.task_definition['taskDefinitionArn']))
+                    log.error('Container %s not found in the task definition %s' %
+                              (ci_container_name, self.task_definition['taskDefinitionArn']))
                     sys.exit(1)
 
         elif fn == 'update_service':
@@ -303,17 +309,9 @@ class CLI(object):
         return kwargs
 
     def client_fn(self, fn):
-        try:
-            kwargs = self.client_kwargs(fn)
-            response = getattr(self.client, fn)(**kwargs)
-            return response
-
-        except ClientError as e:
-            print('ClientError: %s' % e)
-            sys.exit(1)
-        except Exception as e:
-            print('Exception: %s' % e)
-            sys.exit(1)
+        kwargs = self.client_kwargs(fn)
+        response = getattr(self.client, fn)(**kwargs)
+        return response
 
 
 def main():
