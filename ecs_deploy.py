@@ -17,28 +17,34 @@ logging.basicConfig()
 log = logging.getLogger(__name__)
 log.setLevel(logging.DEBUG)
 
+MAX_TIMEOUT = 90  # seconds
+
 
 class CLI(object):
-    def __init__(self):
-        # get args
-        self.args = self._init_parser()
 
-        # init boto3 client
+    def get_boto_client(self):
+        # optional aws credentials overrides
+        credentials = {}
+        credentials = self._arg_kwargs(credentials, 'aws_access_key',
+                                       'aws_access_key_id')
+        credentials = self._arg_kwargs(credentials, 'aws_secret_key',
+                                       'aws_secret_access_key')
+        credentials = self._arg_kwargs(credentials, 'aws_region',
+                                       'region_name')
+
+        # init boto3 ecs client
         try:
-            # optional aws credentials overrides
-            credentials = {}
-            credentials = self._arg_kwargs(credentials, 'aws_access_key',
-                                           'aws_access_key_id')
-            credentials = self._arg_kwargs(credentials, 'aws_secret_key',
-                                           'aws_secret_access_key')
-            credentials = self._arg_kwargs(credentials, 'aws_region',
-                                           'region_name')
-
-            # init boto3 ecs client
-            self.client = boto3.client('ecs', **credentials)
+            client = boto3.client('ecs', **credentials)
         except ClientError as err:
             log.error('Failed to create boto3 client.\n%s' % err)
             sys.exit(1)
+
+        return client
+
+    def __init__(self):
+        # get args
+        self.args = self._init_parser()
+        self.client = self.get_boto_client()
 
         if not (self.args.get('task_definition') or
                 self.args.get('service_name')):
@@ -194,7 +200,7 @@ class CLI(object):
             raise ValueError("No update service found")
 
         # loop for desired timeout
-        timeout = self._int_or_none(self.args.get('timeout')) or 90
+        timeout = self._int_or_none(self.args.get('timeout')) or MAX_TIMEOUT
         started_at = time.time()
         while True:
             self.running_tasks = self.client_fn('list_tasks')['taskArns']
