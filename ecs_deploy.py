@@ -175,11 +175,18 @@ class CLI(object):
             help='Number of Task Definition Revisions to persist before \
                 deregistering oldest revisions.')
 
+        parser.add_argument(
+            '-x',
+            '--revision',
+            help='Task revision number or string')
+
         args = parser.parse_args(sys.argv[1:])
         return vars(args)
 
     def _run_parser(self):
         self.cluster = self.args.get('cluster')
+        self.revision = self.args.get('revision')
+
         self.task_definition_name = self._task_definition_name()
         self.service_name = self._service_name()
 
@@ -274,6 +281,14 @@ class CLI(object):
             kwargs['family'] = self.task_definition['family']
             kwargs['containerDefinitions'] = \
                 self.task_definition['containerDefinitions']
+
+            # seems the new api does not allow this.
+            # Unknown parameter in input: "revision", must be one of: family, taskRoleArn, networkMode, containerDefinitions, volumes
+            # set the desired revision
+            #if self.revision:
+            #    self.task_definition[u"revision"] = self.revision
+            #    kwargs['revision'] = self.revision
+            #    log.debug("Set task revision: {}".format(self.revision))
 
             # optional kwargs from args
             for ci in self.args.get('container_image'):
