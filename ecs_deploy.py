@@ -215,6 +215,10 @@ class CLI(object):
                 described_tasks = self.client_fn('describe_tasks')['tasks']
             else:
                 described_tasks = []
+                described_tasks = []
+                log.info('Service updated successfully, '
+                            'new task definition updated, but no tasks running.')
+                return
             for task in described_tasks:
                 if task['taskDefinitionArn'] == \
                         self.new_task_definition['taskDefinitionArn']:
