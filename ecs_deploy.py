@@ -214,8 +214,6 @@ class CLI(object):
             if len(self.running_tasks) > 0:
                 described_tasks = self.client_fn('describe_tasks')['tasks']
             else:
-                described_tasks = []
-                described_tasks = []
                 log.info('Service updated successfully, '
                             'new task definition updated, but no tasks running.')
                 return
