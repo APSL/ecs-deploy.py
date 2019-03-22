@@ -281,6 +281,12 @@ class CLI(object):
 
         elif fn == 'register_task_definition':
             kwargs['family'] = self.task_definition['family']
+
+            kwargs['taskRoleArn'] = self.task_definition['taskRoleArn']
+            kwargs['networkMode'] = self.task_definition['networkMode']
+            kwargs['containerDefinitions'] = self.task_definition['containerDefinitions']
+            kwargs['volumes'] = self.task_definition['volumes']
+
             kwargs['containerDefinitions'] = \
                 self.task_definition['containerDefinitions']
 
